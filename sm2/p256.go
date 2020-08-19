@@ -126,7 +126,7 @@ func (curve sm2P256Curve) Add(x1, y1, x2, y2 *big.Int) (*big.Int, *big.Int) {
 	sm2P256FromBig(&Y2, y2)
 	sm2P256FromBig(&Z2, z2)
 	sm2P256PointAdd(&X1, &Y1, &Z1, &X2, &Y2, &Z2, &X3, &Y3, &Z3)
-	return sm2P256ToAffine(&X3, &Y3, &Z3)
+	return nil, sm2P256ToAffine(&X3, &Y3, &Z3)
 }
 
 func (curve sm2P256Curve) Double(x1, y1 *big.Int) (*big.Int, *big.Int) {
@@ -137,7 +137,7 @@ func (curve sm2P256Curve) Double(x1, y1 *big.Int) (*big.Int, *big.Int) {
 	sm2P256FromBig(&Y1, y1)
 	sm2P256FromBig(&Z1, z1)
 	sm2P256PointDouble(&X1, &Y1, &Z1, &X1, &Y1, &Z1)
-	return sm2P256ToAffine(&X1, &Y1, &Z1)
+	return nil, sm2P256ToAffine(&X1, &Y1, &Z1)
 }
 
 func (curve sm2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (*big.Int, *big.Int) {
@@ -147,7 +147,7 @@ func (curve sm2P256Curve) ScalarMult(x1, y1 *big.Int, k []byte) (*big.Int, *big.
 	scalar := sm2GenrateWNaf(k)
 	scalarReversed := WNafReversed(scalar)
 	sm2P256ScalarMult(&X, &Y, &Z, &X1, &Y1, scalarReversed)
-	return sm2P256ToAffine(&X, &Y, &Z)
+	return nil, sm2P256ToAffine(&X, &Y, &Z)
 }
 
 func (curve sm2P256Curve) ScalarBaseMult(k []byte) (*big.Int, *big.Int) {
@@ -156,7 +156,7 @@ func (curve sm2P256Curve) ScalarBaseMult(k []byte) (*big.Int, *big.Int) {
 
 	sm2P256GetScalar(&scalarReversed, k)
 	sm2P256ScalarBaseMult(&X, &Y, &Z, &scalarReversed)
-	return sm2P256ToAffine(&X, &Y, &Z)
+	return nil, sm2P256ToAffine(&X, &Y, &Z)
 }
 
 var sm2P256Precomputed = [9 * 2 * 15 * 2]uint32{
@@ -500,10 +500,10 @@ func sm2P256PointAdd(x1, y1, z1, x2, y2, z2, x3, y3, z3 *sm2P256FieldElement) {
 // (x3, y3, z3) = (x1, y1, z1)- (x2, y2, z2)
 func sm2P256PointSub(x1, y1, z1, x2, y2, z2, x3, y3, z3 *sm2P256FieldElement) {
 	var u1, u2, z22, z12, z23, z13, s1, s2, h, h2, r, r2, tm sm2P256FieldElement
-	y:=sm2P256ToBig(y2)
-	zero:=new(big.Int).SetInt64(0)
-	y.Sub(zero,y)
-	sm2P256FromBig(y2,y)
+	y := sm2P256ToBig(y2)
+	zero := new(big.Int).SetInt64(0)
+	y.Sub(zero, y)
+	sm2P256FromBig(y2, y)
 
 	if sm2P256ToBig(z1).Sign() == 0 {
 		sm2P256Dup(x3, x2)
@@ -1065,7 +1065,7 @@ func WNafReversed(wnaf []int8) []int8 {
 	return wnafRev
 }
 func sm2GenrateWNaf(b []byte) []int8 {
-	n:= new(big.Int).SetBytes(b)
+	n := new(big.Int).SetBytes(b)
 	var k *big.Int
 	if n.Cmp(sm2P256.N) >= 0 {
 		n.Mod(n, sm2P256.N)
@@ -1114,8 +1114,8 @@ func boolToUint(b bool) uint {
 	}
 	return 0
 }
-func abs(a int8) uint32{
-	if a<0 {
+func abs(a int8) uint32 {
+	if a < 0 {
 		return uint32(-a)
 	}
 	return uint32(a)
@@ -1147,13 +1147,13 @@ func sm2P256ScalarMult(xOut, yOut, zOut, x, y *sm2P256FieldElement, scalar []int
 	}
 	nIsInfinityMask = ^uint32(0)
 	var zeroes int16
-	for i := 0; i<len(scalar); i++ {
-		if scalar[i] ==0{
+	for i := 0; i < len(scalar); i++ {
+		if scalar[i] == 0 {
 			zeroes++
 			continue
 		}
-		if(zeroes>0){
-			for  ;zeroes>0;zeroes-- {
+		if zeroes > 0 {
+			for ; zeroes > 0; zeroes-- {
 				sm2P256PointDouble(xOut, yOut, zOut, xOut, yOut, zOut)
 			}
 		}
@@ -1175,8 +1175,8 @@ func sm2P256ScalarMult(xOut, yOut, zOut, x, y *sm2P256FieldElement, scalar []int
 		sm2P256CopyConditional(zOut, &tz, mask)
 		nIsInfinityMask &^= pIsNoninfiniteMask
 	}
-	if(zeroes>0){
-		for  ;zeroes>0;zeroes-- {
+	if zeroes > 0 {
+		for ; zeroes > 0; zeroes-- {
 			sm2P256PointDouble(xOut, yOut, zOut, xOut, yOut, zOut)
 		}
 	}

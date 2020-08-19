@@ -285,15 +285,15 @@ func TestEnCryptDecrypt(t *testing.T) {
 	})
 	testEnCryptDecrypt(t, &Sm2CipherOpts{
 		CipherMode: C1C2C3,
-		ASN1: true,
+		ASN1:       true,
 	})
 	testEnCryptDecrypt(t, &Sm2CipherOpts{
 		CipherMode: C1C3C2,
-		ASN1: true,
+		ASN1:       true,
 	})
 }
 
-func testEnCryptDecrypt(t *testing.T, opts *Sm2CipherOpts){
+func testEnCryptDecrypt(t *testing.T, opts *Sm2CipherOpts) {
 	sk := generateTestPrivateKey()
 	pk := sk.PublicKey
 	enc, err := pk.Encrypt([]byte("123"), opts)
