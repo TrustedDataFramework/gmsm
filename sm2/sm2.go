@@ -528,7 +528,7 @@ func Encrypt(pub *PublicKey, data []byte, mode SM2CipherMode) ([]byte, error) {
 	length := len(data)
 	var c1, c2, c3 []byte
 	for {
-		c := []byte{0x04}
+		c1 = []byte{0x04}
 		curve := pub.Curve
 		k, err := randFieldElement(curve, rand.Reader)
 		if err != nil {
@@ -552,7 +552,8 @@ func Encrypt(pub *PublicKey, data []byte, mode SM2CipherMode) ([]byte, error) {
 		if n := len(y2Buf); n < 32 {
 			y2Buf = append(zeroByteSlice()[:32-n], y2Buf...)
 		}
-		c1 = c
+		c1 = append(c1, x1Buf...)
+		c1 = append(c1, y1Buf...)
 		tm := []byte{}
 		tm = append(tm, x2Buf...)
 		tm = append(tm, data...)

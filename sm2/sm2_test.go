@@ -276,14 +276,31 @@ func TestDecrypt(t *testing.T) {
 	}
 }
 
-func TestEnCrypt(t *testing.T) {
+func TestEnCryptDecrypt(t *testing.T) {
+	testEnCryptDecrypt(t, &Sm2CipherOpts{
+		CipherMode: C1C2C3,
+	})
+	testEnCryptDecrypt(t, &Sm2CipherOpts{
+		CipherMode: C1C3C2,
+	})
+	testEnCryptDecrypt(t, &Sm2CipherOpts{
+		CipherMode: C1C2C3,
+		ASN1: true,
+	})
+	testEnCryptDecrypt(t, &Sm2CipherOpts{
+		CipherMode: C1C3C2,
+		ASN1: true,
+	})
+}
+
+func testEnCryptDecrypt(t *testing.T, opts *Sm2CipherOpts){
 	sk := generateTestPrivateKey()
 	pk := sk.PublicKey
-	enc, err := pk.Encrypt([]byte("123"), nil)
+	enc, err := pk.Encrypt([]byte("123"), opts)
 	if err != nil {
 		t.Error(err)
 	}
-	_, err = generateTestPrivateKey().Decrypt(enc, nil)
+	_, err = generateTestPrivateKey().Decrypt(enc, opts)
 	if err != nil {
 		t.Error(err)
 	}
