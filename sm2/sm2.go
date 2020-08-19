@@ -42,12 +42,24 @@ const (
 	aesIV = "IV for <SM2> CTR"
 )
 
-type SM2SignerOpts struct {
+type SM2CipherMode uint
+
+const (
+	C1C3C2 SM2CipherMode = iota
+	C1C2C3
+)
+
+type Sm2CipherOpts struct {
+	CipherMode SM2CipherMode
+	ASN1       bool
+}
+
+type Sm2SignerOpts struct {
 	UserId []byte
 	ASN1   bool
 }
 
-func (o *SM2SignerOpts) HashFunc() crypto.Hash {
+func (o *Sm2SignerOpts) HashFunc() crypto.Hash {
 	return 0
 }
 
@@ -94,7 +106,7 @@ func SignDataToSignDigit(sign []byte) (*big.Int, *big.Int, error) {
 func (priv *PrivateKey) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
 	// r, s, err := Sign(priv, msg)
 	uid := default_uid
-	o, ok := opts.(*SM2SignerOpts)
+	o, ok := opts.(*Sm2SignerOpts)
 	if ok && o.UserId != nil {
 		uid = o.UserId
 	}
@@ -108,15 +120,26 @@ func (priv *PrivateKey) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts)
 	return append(padPrefix(r.Bytes(), 0, 32), padPrefix(s.Bytes(), 0, 32)...), nil
 }
 
-func (priv *PrivateKey) Decrypt(data []byte) ([]byte, error) {
-	return DecryptAsn1(priv, data)
+func (priv *PrivateKey) Decrypt(data []byte, opts *Sm2CipherOpts) ([]byte, error) {
+	var err error
+	var defaultOpts Sm2CipherOpts
+	if opts == nil {
+		opts = &defaultOpts
+	}
+	if opts.ASN1 {
+		data, err = CipherUnmarshal(data)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return Decrypt(priv, data, opts.CipherMode)
 }
 
 func (pub *PublicKey) Verify(msg []byte, sign []byte, opts crypto.SignerOpts) bool {
 	var sm2Sign sm2Signature
 	r, s := new(big.Int), new(big.Int)
 
-	if o, ok := opts.(*SM2SignerOpts); ok && o.ASN1 {
+	if o, ok := opts.(*Sm2SignerOpts); ok && o.ASN1 {
 		_, err := asn1.Unmarshal(sign, &sm2Sign)
 		if err != nil {
 			return false
@@ -128,15 +151,26 @@ func (pub *PublicKey) Verify(msg []byte, sign []byte, opts crypto.SignerOpts) bo
 	}
 
 	uid := default_uid
-	if o, ok := opts.(*SM2SignerOpts); ok && o.UserId != nil {
+	if o, ok := opts.(*Sm2SignerOpts); ok && o.UserId != nil {
 		uid = o.UserId
 	}
 	return Sm2Verify(pub, msg, uid, r, s)
 	// return Verify(pub, msg, sm2Sign.R, sm2Sign.S)
 }
 
-func (pub *PublicKey) Encrypt(data []byte) ([]byte, error) {
-	return EncryptAsn1(pub, data)
+func (pub *PublicKey) Encrypt(data []byte, opts *Sm2CipherOpts) ([]byte, error) {
+	var defaultOpts Sm2CipherOpts
+	if opts == nil {
+		opts = &defaultOpts
+	}
+	encrypted, err := Encrypt(pub, data, opts.CipherMode)
+	if err != nil {
+		return nil, err
+	}
+	if opts.ASN1 {
+		return CipherMarshal(encrypted)
+	}
+	return encrypted, nil
 }
 
 var one = new(big.Int).SetInt64(1)
@@ -238,7 +272,9 @@ func GenerateKey() (*PrivateKey, error) {
 		return nil, err
 	}
 	var ret PrivateKey
-	ret.Decode(padPrefix(k.Bytes(), 0, 32))
+	if err = ret.Decode(padPrefix(k.Bytes(), 0, 32)); err != nil {
+		return nil, err
+	}
 	return &ret, nil
 }
 
@@ -484,11 +520,15 @@ func zeroByteSlice() []byte {
  *  y
  *  hash
  *  CipherText
+
+ * 	c1 = x + y
+ *
  */
-func Encrypt(pub *PublicKey, data []byte) ([]byte, error) {
+func Encrypt(pub *PublicKey, data []byte, mode SM2CipherMode) ([]byte, error) {
 	length := len(data)
+	var c1, c2, c3 []byte
 	for {
-		c := []byte{}
+		c := []byte{0x04}
 		curve := pub.Curve
 		k, err := randFieldElement(curve, rand.Reader)
 		if err != nil {
@@ -512,32 +552,51 @@ func Encrypt(pub *PublicKey, data []byte) ([]byte, error) {
 		if n := len(y2Buf); n < 32 {
 			y2Buf = append(zeroByteSlice()[:32-n], y2Buf...)
 		}
-		c = append(c, x1Buf...) // x分量
-		c = append(c, y1Buf...) // y分量
+		c1 = c
 		tm := []byte{}
 		tm = append(tm, x2Buf...)
 		tm = append(tm, data...)
 		tm = append(tm, y2Buf...)
 		h := sm3.Sm3Sum(tm)
-		c = append(c, h...)
+		c3 = h
 		ct, ok := kdf(length, x2Buf, y2Buf) // 密文
 		if !ok {
 			continue
 		}
-		c = append(c, ct...)
+		c2 = ct
 		for i := 0; i < length; i++ {
-			c[96+i] ^= data[i]
+			c2[i] ^= data[i]
 		}
-		return append([]byte{0x04}, c...), nil
+		break
 	}
+	if mode == C1C2C3 {
+		ret := append(c1, c2...)
+		ret = append(ret, c3...)
+		return ret, nil
+	}
+	ret := append(c1, c3...)
+	ret = append(ret, c2...)
+	return ret, nil
 }
 
-func Decrypt(priv *PrivateKey, data []byte) ([]byte, error) {
-	data = data[1:]
+func Decrypt(priv *PrivateKey, data []byte, mode SM2CipherMode) ([]byte, error) {
+	if data[0] == 0x04 {
+		data = data[1:]
+	}
+	c1 := data[:64]
+	var c2, c3 []byte
+	if mode == C1C2C3 {
+		c3 = data[len(data)-32:]
+		c2 = data[64 : len(data)-32]
+	} else {
+		c3 = data[64 : 64+32]
+		c2 = data[64+32:]
+	}
+
 	length := len(data) - 96
 	curve := priv.Curve
-	x := new(big.Int).SetBytes(data[:32])
-	y := new(big.Int).SetBytes(data[32:64])
+	x := new(big.Int).SetBytes(c1[:32])
+	y := new(big.Int).SetBytes(c1[32:])
 	x2, y2 := curve.ScalarMult(x, y, priv.D.Bytes())
 	x2Buf := x2.Bytes()
 	y2Buf := y2.Bytes()
@@ -552,39 +611,17 @@ func Decrypt(priv *PrivateKey, data []byte) ([]byte, error) {
 		return nil, errors.New("Decrypt: failed to decrypt")
 	}
 	for i := 0; i < length; i++ {
-		c[i] ^= data[i+96]
+		c[i] ^= c2[i]
 	}
 	tm := []byte{}
 	tm = append(tm, x2Buf...)
 	tm = append(tm, c...)
 	tm = append(tm, y2Buf...)
 	h := sm3.Sm3Sum(tm)
-	if bytes.Compare(h, data[64:96]) != 0 {
+	if bytes.Compare(h, c3) != 0 {
 		return c, errors.New("Decrypt: failed to decrypt")
 	}
 	return c, nil
-}
-
-/*
-sm2加密，返回asn.1编码格式的密文内容
-*/
-func EncryptAsn1(pub *PublicKey, data []byte) ([]byte, error) {
-	cipher, err := Encrypt(pub, data)
-	if err != nil {
-		return nil, err
-	}
-	return CipherMarshal(cipher)
-}
-
-/*
-sm2解密，解析asn.1编码格式的密文内容
-*/
-func DecryptAsn1(pub *PrivateKey, data []byte) ([]byte, error) {
-	cipher, err := CipherUnmarshal(data)
-	if err != nil {
-		return nil, err
-	}
-	return Decrypt(pub, cipher)
 }
 
 /*

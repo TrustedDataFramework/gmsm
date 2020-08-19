@@ -1970,7 +1970,7 @@ func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv 
 	var signerOpts crypto.SignerOpts
 
 	if _, ok := key.(*PrivateKey); ok {
-		signerOpts = &SM2SignerOpts{
+		signerOpts = &Sm2SignerOpts{
 			ASN1: true,
 		}
 	}
@@ -2371,7 +2371,7 @@ func CreateCertificateRequest(rand io.Reader, template *CertificateRequest, priv
 
 	var opts crypto.SignerOpts = hashFunc
 	if _, ok := key.(*PrivateKey); ok {
-		opts = &SM2SignerOpts{
+		opts = &Sm2SignerOpts{
 			ASN1: true,
 		}
 	}

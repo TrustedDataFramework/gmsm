@@ -50,13 +50,19 @@ func TestSm2(t *testing.T) {
 	fmt.Printf("%v\n", priv.Curve.IsOnCurve(priv.X, priv.Y)) // 验证是否为sm2的曲线
 	pub := &priv.PublicKey
 	msg := []byte("123456")
-	d0, err := pub.Encrypt(msg)
+	d0, err := pub.Encrypt(msg, &Sm2CipherOpts{
+		ASN1:       true,
+		CipherMode: C1C3C2,
+	})
 	if err != nil {
 		fmt.Printf("Error: failed to encrypt %s: %v\n", msg, err)
 		return
 	}
 	// fmt.Printf("Cipher text = %v\n", d0)
-	d1, err := priv.Decrypt(d0)
+	d1, err := priv.Decrypt(d0, &Sm2CipherOpts{
+		CipherMode: C1C3C2,
+		ASN1:       true,
+	})
 	if err != nil {
 		fmt.Printf("Error: failed to decrypt: %v\n", err)
 	}
@@ -84,7 +90,7 @@ func TestSm2(t *testing.T) {
 		log.Fatal(err)
 	}
 	msg, _ = ioutil.ReadFile("ifile")                                       // 从文件读取数据
-	sign, err := privKey.Sign(rand.Reader, msg, &SM2SignerOpts{ASN1: true}) // 签名
+	sign, err := privKey.Sign(rand.Reader, msg, &Sm2SignerOpts{ASN1: true}) // 签名
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -219,7 +225,7 @@ func BenchmarkSM2(t *testing.B) {
 	}
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		sign, err := priv.Sign(rand.Reader, msg, &SM2SignerOpts{ASN1: true}) // 签名
+		sign, err := priv.Sign(rand.Reader, msg, &Sm2SignerOpts{ASN1: true}) // 签名
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -251,15 +257,36 @@ func TestPaddPrefix(t *testing.T) {
 func TestVerify(t *testing.T) {
 	sig, _ := hex.DecodeString("344857fe641c9fd3825a389fc85ca8bcab694f199fe155022e17dfe97f36afa43e0f5a06cea4dc170e11a17f0a465cc2ce235b94c24e550d6172764a52eaad71")
 	pk := generateTestPrivateKey().PublicKey
-	if !pk.Verify([]byte("123"), sig, &SM2SignerOpts{UserId: testUID, ASN1: false}) {
+	if !pk.Verify([]byte("123"), sig, &Sm2SignerOpts{UserId: testUID, ASN1: false}) {
 		t.Error("verify failed")
 	}
 }
 
-func TestSign(t *testing.T) {
+func TestDecrypt(t *testing.T) {
 	sk := generateTestPrivateKey()
-	sig, _ := sk.Sign(rand.Reader, []byte("123"), &SM2SignerOpts{UserId: testUID, ASN1: false})
-	fmt.Println(hex.EncodeToString(sig))
+	encrypted, _ := hex.DecodeString("049232f758694e4c45df8b52c6c86a630e58d88f4eeb9bcc0375e8c636c503fc2de3eebe14b1c9353ffedbaa784985fdb958e1824787d813a91eae55a153b284c9a7a14df792b9c1e293ee297b3dadb3f146ca092cd3fd2830e0731fc38cb2c953e69684")
+	plain, err := sk.Decrypt(encrypted, &Sm2CipherOpts{
+		CipherMode: C1C2C3,
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	if string(plain) != "123" {
+		t.Error("decrypt failed")
+	}
+}
+
+func TestEnCrypt(t *testing.T) {
+	sk := generateTestPrivateKey()
+	pk := sk.PublicKey
+	enc, err := pk.Encrypt([]byte("123"), nil)
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = generateTestPrivateKey().Decrypt(enc, nil)
+	if err != nil {
+		t.Error(err)
+	}
 }
 
 func TestKEB2(t *testing.T) {
