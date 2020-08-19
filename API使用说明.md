@@ -133,12 +133,18 @@ import github.com/tjfoc/gmsm/sm2
     }
     msg := []byte("Tongji Fintech Research Institute")
     pub := &priv.PublicKey
-    ciphertxt, err := pub.Encrypt(msg)
+    cipherOpts := &Sm2CipherOpts{
+		ASN1:       true, // 使用ASN1 编码
+		CipherMode: C1C3C2, // C1C3C2 方式填充
+	}
+    ciphertxt, err := pub.Encrypt(msg, cipherOpts)
     if err != nil {
     	log.Fatal(err)
     }
     fmt.Printf("加密结果:%x\n",ciphertxt)
-    plaintxt,err :=  priv.Decrypt(ciphertxt)
+    plaintxt,err :=  priv.Decrypt(ciphertxt, cipherOpts)
+
+    signOpts := &Sm2SignerOpts{UserId: testUID, ASN1: false}
     if err != nil {
     	log.Fatal(err)
     }
@@ -146,11 +152,11 @@ import github.com/tjfoc/gmsm/sm2
         log.Fatal("原文不匹配")
     }
 
-    r,s,err := sm2.Sign(priv, msg)
+    sig ,err := priv.Sign(rand.Reader, msg, signOpts)
     if err != nil {
     	log.Fatal(err)
     }
-    isok := sm2.Verify(pub,msg,r,s)
+    isok := pub.Verify(msg, sig, signOpts)
     fmt.Printf("Verified: %v\n", isok)
 ```
 
@@ -165,23 +171,23 @@ func GenerateKey() (*PrivateKey, error)
 #### Sign
 用私钥签名数据，成功返回以两个大数表示的签名结果，否则返回错误。
 ```Go
-func Sign(priv *PrivateKey, hash []byte) (r, s *big.Int, err error)
+func (priv *PrivateKey) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts)
 ```
 
 #### Verify
 用公钥验证数据签名, 验证成功返回True，否则返回False。
 ```Go
-func Verify(pub *PublicKey, hash []byte, r, s *big.Int) bool 
+func (pub *PublicKey) Verify(msg []byte, sign []byte, opts crypto.SignerOpts) bool 
 ```
 
 #### Encrypt
 用公钥加密数据,成功返回密文错误，否则返回错误。
 ```Go
-func Encrypt(pub *PublicKey, data []byte) ([]byte, error) 
+func (pub *PublicKey) Encrypt(data []byte, opts *Sm2CipherOpts) ([]byte, error)
 ```
 
 #### Decrypt
 用私钥解密数据，成功返回原始明文数据，否则返回错误。
 ```Go
-func Decrypt(priv *PrivateKey, data []byte) ([]byte, error)
+func (priv *PrivateKey) Decrypt(data []byte, opts *Sm2CipherOpts) ([]byte, error)
 ```
