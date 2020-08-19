@@ -31,6 +31,17 @@ import (
 	"time"
 )
 
+var (
+	testUID = []byte("userid@soie-chain.com")
+)
+
+func generateTestPrivateKey() *PrivateKey {
+	str := "f00df601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5"
+	var sk PrivateKey
+	sk.DecodeHex(str)
+	return &sk
+}
+
 func TestSm2(t *testing.T) {
 	priv, err := GenerateKey() // 生成密钥对
 	if err != nil {
@@ -72,8 +83,8 @@ func TestSm2(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	msg, _ = ioutil.ReadFile("ifile")                // 从文件读取数据
-	sign, err := privKey.Sign(rand.Reader, msg, nil) // 签名
+	msg, _ = ioutil.ReadFile("ifile")                                       // 从文件读取数据
+	sign, err := privKey.Sign(rand.Reader, msg, &SM2SignerOpts{ASN1: true}) // 签名
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,13 +93,13 @@ func TestSm2(t *testing.T) {
 		log.Fatal(err)
 	}
 	signdata, _ := ioutil.ReadFile("ofile")
-	ok = privKey.Verify(msg, signdata) // 密钥验证
+	ok = privKey.Verify(msg, signdata, nil) // 密钥验证
 	if ok != true {
 		fmt.Printf("Verify error\n")
 	} else {
 		fmt.Printf("Verify ok\n")
 	}
-	ok = pubKey.Verify(msg, signdata) // 公钥验证
+	ok = pubKey.Verify(msg, signdata, nil) // 公钥验证
 	if ok != true {
 		fmt.Printf("Verify error\n")
 	} else {
@@ -208,11 +219,11 @@ func BenchmarkSM2(t *testing.B) {
 	}
 	t.ResetTimer()
 	for i := 0; i < t.N; i++ {
-		sign, err := priv.Sign(rand.Reader, msg, nil) // 签名
+		sign, err := priv.Sign(rand.Reader, msg, &SM2SignerOpts{ASN1: true}) // 签名
 		if err != nil {
 			log.Fatal(err)
 		}
-		priv.Verify(msg, sign) // 密钥验证
+		priv.Verify(msg, sign, nil) // 密钥验证
 		// if ok != true {
 		// 	fmt.Printf("Verify error\n")
 		// } else {
@@ -222,9 +233,7 @@ func BenchmarkSM2(t *testing.B) {
 }
 
 func Test3(t *testing.T) {
-	str := "f00df601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5"
-	var sk PrivateKey
-	sk.DecodeHex(str)
+	sk := generateTestPrivateKey()
 	if sk.PublicKey.EncodeHex() != "02b507fe1afd0cc7a525488292beadbe9f143784de44f8bc1c991636509fd50936" {
 		t.Error("convert private key to public key failed")
 	}
@@ -236,6 +245,14 @@ func TestPaddPrefix(t *testing.T) {
 	b = padPrefix(b, 1, 32)
 	if hex.EncodeToString(b) != "0101f601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5" {
 		t.Error("pad prefix failed")
+	}
+}
+
+func TestSignAndVerify(t *testing.T) {
+	sig, _ := hex.DecodeString("344857fe641c9fd3825a389fc85ca8bcab694f199fe155022e17dfe97f36afa43e0f5a06cea4dc170e11a17f0a465cc2ce235b94c24e550d6172764a52eaad71")
+	pk := generateTestPrivateKey().PublicKey
+	if !pk.Verify([]byte("123"), sig, &SM2SignerOpts{UserId: testUID, ASN1: false}) {
+		t.Error("verify failed")
 	}
 }
 

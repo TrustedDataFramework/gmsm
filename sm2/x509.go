@@ -1968,7 +1968,13 @@ func CreateCertificate(rand io.Reader, template, parent *Certificate, pub, priv 
 	}
 
 	var signerOpts crypto.SignerOpts
-	signerOpts = hashFunc
+
+	if _, ok := key.(*PrivateKey); ok {
+		signerOpts = &SM2SignerOpts{
+			ASN1: true,
+		}
+	}
+
 	if template.SignatureAlgorithm != 0 && template.SignatureAlgorithm.isRSAPSS() {
 		signerOpts = &rsa.PSSOptions{
 			SaltLength: rsa.PSSSaltLengthEqualsHash,
@@ -2353,7 +2359,7 @@ func CreateCertificateRequest(rand io.Reader, template *CertificateRequest, priv
 
 	digest := tbsCSRContents
 	switch template.SignatureAlgorithm {
-	case SM2WithSM3, SM2WithSHA1, SM2WithSHA256,UnknownSignatureAlgorithm:
+	case SM2WithSM3, SM2WithSHA1, SM2WithSHA256, UnknownSignatureAlgorithm:
 		break
 	default:
 		h := hashFunc.New()
@@ -2362,7 +2368,15 @@ func CreateCertificateRequest(rand io.Reader, template *CertificateRequest, priv
 	}
 
 	var signature []byte
-	signature, err = key.Sign(rand, digest, hashFunc)
+
+	var opts crypto.SignerOpts = hashFunc
+	if _, ok := key.(*PrivateKey); ok {
+		opts = &SM2SignerOpts{
+			ASN1: true,
+		}
+	}
+
+	signature, err = key.Sign(rand, digest, opts)
 	if err != nil {
 		return
 	}
@@ -2394,7 +2408,7 @@ func ParseCertificateRequest(asn1Data []byte) (*CertificateRequest, error) {
 
 func parseCertificateRequest(in *certificateRequest) (*CertificateRequest, error) {
 	out := &CertificateRequest{
-		Raw: in.Raw,
+		Raw:                      in.Raw,
 		RawTBSCertificateRequest: in.TBSCSR.Raw,
 		RawSubjectPublicKeyInfo:  in.TBSCSR.PublicKey.Raw,
 		RawSubject:               in.TBSCSR.Subject.FullBytes,

@@ -42,6 +42,16 @@ const (
 	aesIV = "IV for <SM2> CTR"
 )
 
+type SM2SignerOpts struct {
+	UserId []byte
+	Hash   crypto.Hash
+	ASN1   bool
+}
+
+func (o *SM2SignerOpts) HashFunc() crypto.Hash {
+	return o.Hash
+}
+
 type PublicKey struct {
 	elliptic.Curve
 	X, Y *big.Int
@@ -84,25 +94,45 @@ func SignDataToSignDigit(sign []byte) (*big.Int, *big.Int, error) {
 // sign format = 30 + len(z) + 02 + len(r) + r + 02 + len(s) + s, z being what follows its size, ie 02+len(r)+r+02+len(s)+s
 func (priv *PrivateKey) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
 	// r, s, err := Sign(priv, msg)
-	r, s, err := Sm2Sign(priv, msg, default_uid)
+	uid := default_uid
+	o, ok := opts.(*SM2SignerOpts)
+	if ok && o.UserId != nil {
+		uid = o.UserId
+	}
+	r, s, err := Sm2Sign(priv, msg, uid)
 	if err != nil {
 		return nil, err
 	}
-	return asn1.Marshal(sm2Signature{r, s})
+	if ok && o.ASN1 {
+		return asn1.Marshal(sm2Signature{r, s})
+	}
+	return append(padPrefix(r.Bytes(), 0, 32), padPrefix(s.Bytes(), 0, 32)...), nil
 }
 
 func (priv *PrivateKey) Decrypt(data []byte) ([]byte, error) {
 	return DecryptAsn1(priv, data)
 }
 
-func (pub *PublicKey) Verify(msg []byte, sign []byte) bool {
+func (pub *PublicKey) Verify(msg []byte, sign []byte, opts crypto.SignerOpts) bool {
 	var sm2Sign sm2Signature
+	r, s := new(big.Int), new(big.Int)
 
-	_, err := asn1.Unmarshal(sign, &sm2Sign)
-	if err != nil {
-		return false
+	if o, ok := opts.(*SM2SignerOpts); ok && o.ASN1 {
+		_, err := asn1.Unmarshal(sign, &sm2Sign)
+		if err != nil {
+			return false
+		}
+		r, s = sm2Sign.R, sm2Sign.S
+	} else {
+		r.SetBytes(sign[:32])
+		s.SetBytes(sign[32:])
 	}
-	return Sm2Verify(pub, msg, default_uid, sm2Sign.R, sm2Sign.S)
+
+	uid := default_uid
+	if o, ok := opts.(*SM2SignerOpts); ok && o.UserId != nil {
+		uid = o.UserId
+	}
+	return Sm2Verify(pub, msg, uid, r, s)
 	// return Verify(pub, msg, sm2Sign.R, sm2Sign.S)
 }
 
@@ -739,13 +769,22 @@ func (a *PublicKey) EncodeHex() string {
 	return hex.EncodeToString(Compress(a))
 }
 
-func Decompress(a []byte) *PublicKey {
+func (p *PublicKey) DecodeHex(s string) error {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	p.Decompress(b)
+	return nil
+}
+
+func (p *PublicKey) Decompress(a []byte) {
 	var aa, xx, xx3 sm2P256FieldElement
 
-	P256Sm2()
-	x := new(big.Int).SetBytes(a[1:])
+	p.Curve = P256Sm2()
+	p.X = new(big.Int).SetBytes(a[1:])
 	curve := sm2P256
-	sm2P256FromBig(&xx, x)
+	sm2P256FromBig(&xx, p.X)
 	sm2P256Square(&xx3, &xx)       // x3 = x ^ 2
 	sm2P256Mul(&xx3, &xx3, &xx)    // x3 = x ^ 2 * x
 	sm2P256Mul(&aa, &curve.a, &xx) // a = a * x
@@ -753,13 +792,14 @@ func Decompress(a []byte) *PublicKey {
 	sm2P256Add(&xx3, &xx3, &curve.b)
 
 	y2 := sm2P256ToBig(&xx3)
-	y := new(big.Int).ModSqrt(y2, sm2P256.P)
-	if getLastBit(y)+2 != uint(a[0]) {
-		y.Sub(sm2P256.P, y)
+	p.Y = new(big.Int).ModSqrt(y2, sm2P256.P)
+	if getLastBit(p.Y)+2 != uint(a[0]) {
+		p.Y.Sub(sm2P256.P, p.Y)
 	}
-	return &PublicKey{
-		Curve: P256Sm2(),
-		X:     x,
-		Y:     y,
-	}
+}
+
+func Decompress(a []byte) *PublicKey {
+	var p PublicKey
+	p.Decompress(a)
+	return &p
 }
