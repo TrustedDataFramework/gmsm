@@ -44,12 +44,11 @@ const (
 
 type SM2SignerOpts struct {
 	UserId []byte
-	Hash   crypto.Hash
 	ASN1   bool
 }
 
 func (o *SM2SignerOpts) HashFunc() crypto.Hash {
-	return o.Hash
+	return 0
 }
 
 type PublicKey struct {

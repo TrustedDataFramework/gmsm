@@ -248,12 +248,18 @@ func TestPaddPrefix(t *testing.T) {
 	}
 }
 
-func TestSignAndVerify(t *testing.T) {
+func TestVerify(t *testing.T) {
 	sig, _ := hex.DecodeString("344857fe641c9fd3825a389fc85ca8bcab694f199fe155022e17dfe97f36afa43e0f5a06cea4dc170e11a17f0a465cc2ce235b94c24e550d6172764a52eaad71")
 	pk := generateTestPrivateKey().PublicKey
 	if !pk.Verify([]byte("123"), sig, &SM2SignerOpts{UserId: testUID, ASN1: false}) {
 		t.Error("verify failed")
 	}
+}
+
+func TestSign(t *testing.T) {
+	sk := generateTestPrivateKey()
+	sig, _ := sk.Sign(rand.Reader, []byte("123"), &SM2SignerOpts{UserId: testUID, ASN1: false})
+	fmt.Println(hex.EncodeToString(sig))
 }
 
 func TestKEB2(t *testing.T) {
