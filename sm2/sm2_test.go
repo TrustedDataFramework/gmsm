@@ -20,6 +20,7 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -220,6 +221,24 @@ func BenchmarkSM2(t *testing.B) {
 	}
 }
 
+func Test3(t *testing.T) {
+	str := "f00df601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5"
+	var sk PrivateKey
+	sk.DecodeHex(str)
+	if sk.PublicKey.EncodeHex() != "02b507fe1afd0cc7a525488292beadbe9f143784de44f8bc1c991636509fd50936" {
+		t.Error("convert private key to public key failed")
+	}
+}
+
+func TestPaddPrefix(t *testing.T) {
+	str := "f601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5"
+	b, _ := hex.DecodeString(str)
+	b = padPrefix(b, 1, 32)
+	if hex.EncodeToString(b) != "0101f601a78147ffe0b84de1dffbebed2a6ea965becd5d0bd7faf54f1f29c6b5" {
+		t.Error("pad prefix failed")
+	}
+}
+
 func TestKEB2(t *testing.T) {
 	ida := []byte{'1', '2', '3', '4', '5', '6', '7', '8',
 		'1', '2', '3', '4', '5', '6', '7', '8'}
@@ -233,12 +252,12 @@ func TestKEB2(t *testing.T) {
 		0x54, 0x37, 0xA5, 0x93, 0x56, 0xB8, 0x23, 0x38,
 		0xEA, 0xAD, 0xDA, 0x6C, 0xEB, 0x19, 0x90, 0x88,
 		0xF1, 0x4A, 0xE1, 0x0D, 0xEF, 0xA2, 0x29, 0xB5}
-	raBuf := []byte{0XD4, 0XDE, 0X15, 0X47, 0X4D, 0XB7, 0X4D, 0X06,
-		0X49, 0X1C, 0X44, 0X0D, 0X30, 0X5E, 0X01, 0X24,
-		0X00, 0X99, 0X0F, 0X3E, 0X39, 0X0C, 0X7E, 0X87,
-		0X15, 0X3C, 0X12, 0XDB, 0X2E, 0XA6, 0X0B, 0XB3}
+	raBuf := []byte{0xD4, 0xDE, 0x15, 0x47, 0x4D, 0xB7, 0x4D, 0x06,
+		0x49, 0x1C, 0x44, 0x0D, 0x30, 0x5E, 0x01, 0x24,
+		0x00, 0x99, 0x0F, 0x3E, 0x39, 0x0C, 0x7E, 0x87,
+		0x15, 0x3C, 0x12, 0xDB, 0x2E, 0xA6, 0x0B, 0xB3}
 
-	rbBuf := []byte{0X7E, 0x07, 0x12, 0x48, 0x14, 0xB3, 0x09, 0x48,
+	rbBuf := []byte{0x7E, 0x07, 0x12, 0x48, 0x14, 0xB3, 0x09, 0x48,
 		0x91, 0x25, 0xEA, 0xED, 0x10, 0x11, 0x13, 0x16,
 		0x4E, 0xBF, 0x0F, 0x34, 0x58, 0xC5, 0xBD, 0x88,
 		0x33, 0x5C, 0x1F, 0x9D, 0x59, 0x62, 0x43, 0xD6}
@@ -268,11 +287,11 @@ func TestKEB2(t *testing.T) {
 	rb.D = new(big.Int).SetBytes(rbBuf)
 	rb.PublicKey.X, rb.PublicKey.Y = curve.ScalarBaseMult(rbBuf)
 
-	k1,Sb,S2, err := KeyExchangeB(16, ida, idb, db, &da.PublicKey, rb, &ra.PublicKey)
+	k1, Sb, S2, err := KeyExchangeB(16, ida, idb, db, &da.PublicKey, rb, &ra.PublicKey)
 	if err != nil {
 		t.Error(err)
 	}
-	k2,S1,Sa, err := KeyExchangeA(16, ida, idb, da, &db.PublicKey, ra, &rb.PublicKey)
+	k2, S1, Sa, err := KeyExchangeA(16, ida, idb, da, &db.PublicKey, ra, &rb.PublicKey)
 	if err != nil {
 		t.Error(err)
 	}

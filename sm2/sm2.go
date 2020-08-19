@@ -26,6 +26,7 @@ import (
 	"crypto/sha512"
 	"encoding/asn1"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"io"
 	"math/big"
@@ -160,23 +161,56 @@ func randFieldElement(c elliptic.Curve, rand io.Reader) (k *big.Int, err error) 
 	return
 }
 
+func (priv *PrivateKey) DecodeHex(h string) error {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return err
+	}
+	priv.Decode(b)
+	return nil
+}
+
+func (priv *PrivateKey) Decode(b []byte) error {
+	c := P256Sm2()
+	priv.PublicKey.Curve = c
+	priv.D = new(big.Int).SetBytes(b)
+	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(b)
+	return nil
+}
+
+func padPrefix(data []byte, el byte, length int) []byte {
+	if len(data) >= length {
+		return data
+	}
+	b := make([]byte, length)
+	copy(b[length-len(data):], data)
+	if el == 0 {
+		return b
+	}
+	for i := 0; i < length-len(data); i++ {
+		b[i] = el
+	}
+	return b
+}
+
 func GenerateKey() (*PrivateKey, error) {
 	c := P256Sm2()
 	params := c.Params()
 	b := make([]byte, params.BitSize/8+8)
 	_, err := io.ReadFull(rand.Reader, b)
-	if err != nil {
-		return nil, err
-	}
+
 	k := new(big.Int).SetBytes(b)
 	n := new(big.Int).Sub(params.N, two)
 	k.Mod(k, n)
 	k.Add(k, one)
-	priv := new(PrivateKey)
-	priv.PublicKey.Curve = c
-	priv.D = k
-	priv.PublicKey.X, priv.PublicKey.Y = c.ScalarBaseMult(k.Bytes())
-	return priv, nil
+	b = k.Bytes()
+
+	if err != nil {
+		return nil, err
+	}
+	var ret PrivateKey
+	ret.Decode(padPrefix(k.Bytes(), 0, 32))
+	return &ret, nil
 }
 
 var errZeroParam = errors.New("zero parameter")
@@ -699,6 +733,10 @@ func Compress(a *PublicKey) []byte {
 	}
 	buf = append([]byte{byte(yp + 2)}, buf...)
 	return buf
+}
+
+func (a *PublicKey) EncodeHex() string {
+	return hex.EncodeToString(Compress(a))
 }
 
 func Decompress(a []byte) *PublicKey {
